@@ -1,4 +1,4 @@
-# esphome-lc709203f-deepsleep
+# lc709203f_deepsleep
 
 ESPHome external component for the **LC709203F** LiPo fuel gauge, optimised
 for ESP32 **deep-sleep** nodes.
@@ -78,19 +78,19 @@ ESP32 SCL ────────► LC709203F SCL        ← 4.7 kΩ pull-up t
 
 ### 1. Reference the component
 
-**Local development (this repo):**
+**From GitHub (recommended):**
+```yaml
+external_components:
+  - source: github://ceear/lc709203f_deepsleep@main
+    components: [lc709203f_deepsleep]
+```
+
+**Local development (cloned repo):**
 ```yaml
 external_components:
   - source:
       type: local
-      path: path/to/esphome-lc709203f-deepsleep/components
-    components: [lc709203f_deepsleep]
-```
-
-**From GitHub:**
-```yaml
-external_components:
-  - source: github://YOUR_USERNAME/esphome-lc709203f-deepsleep@main
+      path: path/to/lc709203f_deepsleep/components
     components: [lc709203f_deepsleep]
 ```
 
@@ -247,6 +247,7 @@ voltage+RSOC plausibility check as a substitute.  See
 
 ## Sources and References
 
+- [This repository](https://github.com/ceear/lc709203f_deepsleep)
 - [ESPHome LC709203F component source](https://github.com/esphome/esphome/tree/dev/esphome/components/lc709203f)
 - [ESPHome external_components documentation](https://esphome.io/components/external_components)
 - [LC709203F datasheet – ON Semiconductor / ABLIC](https://www.onsemi.com/pdf/datasheet/lc709203f-d.pdf)

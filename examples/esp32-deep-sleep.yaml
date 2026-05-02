@@ -75,9 +75,7 @@ wifi:
   power_save_mode: none
 
 external_components:
-  - source:
-      type: local
-      path: ../components
+  - source: github://ceear/lc709203f_deepsleep@main
     components: [lc709203f_deepsleep]
 
 i2c:
