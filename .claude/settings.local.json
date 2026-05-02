@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:esphome.io)",
+      "WebSearch",
+      "WebFetch(domain:developers.esphome.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.analog.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:api-docs.esphome.io)",
+      "WebFetch(domain:www.digikey.com)",
+      "WebFetch(domain:usermanual.wiki)",
+      "WebFetch(domain:os.mbed.com)",
+      "WebFetch(domain:www.digikey.at)",
+      "WebFetch(domain:*)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/esphome/esphome/dev/esphome/const.py\")",
+      "WebFetch(domain:pdfserv.maximintegrated.com)",
+      "WebFetch(domain:medium.com)",
+      "Bash(chmod +x *)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "WebFetch(domain:cdn-learn.adafruit.com)",
+      "Bash(curl -s https://raw.githubusercontent.com/RIOT-OS/RIOT/master/drivers/include/lc709203f.h)",
+      "Bash(curl -s https://raw.githubusercontent.com/RIOT-OS/RIOT/master/drivers/lc709203f/lc709203f.c)",
+      "Bash(curl *)",
+      "Bash(git rm *)"
+    ]
+  }
+}

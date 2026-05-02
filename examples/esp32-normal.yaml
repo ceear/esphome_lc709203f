@@ -1,0 +1,74 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# LC709203F Normal (always-on) Example
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Use this configuration when the ESP32 runs continuously without deep sleep.
+# The component performs a full initialization on every boot (including writing
+# INITIAL_RSOC), which is acceptable because the chip is always powered alongside
+# the ESP32 and both restart together.
+#
+# If your ESP32 sleeps while the LC709203F stays powered, use the deep-sleep
+# example instead to avoid resetting the RSOC algorithm on every wake-up.
+# ─────────────────────────────────────────────────────────────────────────────
+
+substitutions:
+  device_name: battery-monitor-normal
+  friendly_name: "Battery Monitor"
+  update_interval: 60s
+  battery_capacity_mah: "1000"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [lc709203f_deepsleep]
+
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+
+sensor:
+  - platform: lc709203f_deepsleep
+    id: battery_gauge
+    address: 0x0B
+    battery_size: ${battery_capacity_mah}
+    pack_voltage: "3.8V"
+
+    update_interval: ${update_interval}
+    mode: normal              # Full init on every boot; write INITIAL_RSOC
+    force_initialize: false   # true = re-init even if gauge looks valid (for testing)
+    assume_already_initialized: false
+    initialize_if_invalid: true
+    write_initial_rsoc_on_boot: false   # Handled internally by mode: normal
+    set_operational_mode_on_boot: true
+    set_temperature_mode_on_boot: false
+    set_apa_on_boot: true
+
+    battery_voltage:
+      name: "Battery Voltage"
+    battery_level:
+      name: "Battery Level"

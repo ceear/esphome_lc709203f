@@ -1,0 +1,101 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# LC709203F Debug / Commissioning Example
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Use this during initial hardware bring-up to:
+#   • Verify I2C connectivity and CRC
+#   • See the full register dump on every boot
+#   • Understand the init decision (skip / reinit / fail)
+#   • Tune plausibility thresholds
+#   • Confirm RSOC stability across deep-sleep cycles
+#
+# Do NOT use this in production – verbose logging floods serial output.
+# ─────────────────────────────────────────────────────────────────────────────
+
+substitutions:
+  device_name: battery-debug
+  friendly_name: "Battery Debug"
+  battery_capacity_mah: "1000"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: -100
+    then:
+      - logger.log:
+          level: INFO
+          format: "=== Manual update triggered ==="
+      - component.update: battery_gauge
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+  level: VERY_VERBOSE  # Show all component log output including register dumps
+  baud_rate: 115200
+
+# No API / MQTT needed for pure serial debugging
+# api:
+#   encryption:
+#     key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [lc709203f_deepsleep]
+
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  scan: true    # Prints all found I2C addresses on boot (expect 0x0B for LC709203F)
+  frequency: 100000  # 100 kHz for reliable debug reads
+
+sensor:
+  - platform: lc709203f_deepsleep
+    id: battery_gauge
+    address: 0x0B
+    battery_size: ${battery_capacity_mah}
+    pack_voltage: "3.8V"
+
+    update_interval: 10s   # Frequent polling to watch RSOC changes
+    mode: deep_sleep        # Test the deep-sleep code path even without actual sleep
+
+    assume_already_initialized: true
+    initialize_if_invalid: true
+    force_initialize: false  # Change to true to test forced re-init path
+
+    write_initial_rsoc_on_boot: false
+    set_operational_mode_on_boot: true
+    set_temperature_mode_on_boot: false
+    set_apa_on_boot: false
+
+    valid_voltage_min: 2.5
+    valid_voltage_max: 4.35
+    valid_rsoc_min: 0
+    valid_rsoc_max: 100
+
+    debug_registers: true   # ← Dumps all readable registers on every boot
+
+    battery_voltage:
+      name: "Battery Voltage"
+      id: bat_voltage
+      filters: []   # No smoothing – show raw IC values
+    battery_level:
+      name: "Battery Level"
+      id: bat_level
+      filters: []
+    temperature:
+      name: "Cell Temperature"
+      id: bat_temp

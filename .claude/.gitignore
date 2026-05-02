@@ -1,0 +1,17 @@
+.claude/
+
+# ESPHome build artefacts
+**/.esphome/
+**/build/
+**/.pioenvs/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets (never commit)
+secrets.yaml
+
+# macOS
+.DS_Store
