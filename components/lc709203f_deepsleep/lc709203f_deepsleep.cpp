@@ -387,16 +387,27 @@ void LC709203FDeepSleep::setup() {
 // component.update is triggered explicitly (e.g. via on_boot automation).
 // The first call after boot reads fresh values and publishes immediately.
 void LC709203FDeepSleep::update() {
-  ESP_LOGD(TAG, "Setup result: %s  chip_reset=%s",
-    init_state_ == InitState::VALID_EXISTING ? "valid_existing – chip was already running, no registers written" :
-    init_state_ == InitState::INITIALIZED    ? "initialized – APA/CHANGE_PARAM/INITIAL_RSOC were written" :
-    init_state_ == InitState::FAILED         ? "failed – component not ready" :
-                                               "unknown – setup may not have completed",
-    chip_was_reset_ ? "YES" : "no");
+  // Always-visible one-liner so the boot decision is readable over WiFi/MQTT
+  // even though setup() ran before the connection was established.
+  if (chip_was_reset_ && init_state_ == InitState::INITIALIZED) {
+    ESP_LOGI(TAG, "Boot: power loss detected → chip re-initialized (APA+RSOC written)");
+  } else if (!chip_was_reset_ && init_state_ == InitState::VALID_EXISTING) {
+    ESP_LOGI(TAG, "Boot: chip retained state → no registers written");
+  } else if (!chip_was_reset_ && init_state_ == InitState::INITIALIZED) {
+    ESP_LOGI(TAG, "Boot: values implausible → soft re-initialized (no RSOC reset)");
+  } else if (init_state_ == InitState::FAILED) {
+    ESP_LOGW(TAG, "Boot: initialization failed");
+  } else {
+    ESP_LOGW(TAG, "Boot: unknown state (chip_reset=%s init=%d)", chip_was_reset_ ? "YES" : "no", (int)init_state_);
+  }
 
-  // Read key configuration registers and log them so the current chip state
-  // is always visible in the update log (useful when setup ran before WiFi).
-  {
+  if (debug_registers_) {
+    ESP_LOGD(TAG, "  chip_reset=%s  init_state=%s",
+      chip_was_reset_ ? "YES" : "no",
+      init_state_ == InitState::VALID_EXISTING ? "valid_existing" :
+      init_state_ == InitState::INITIALIZED    ? "initialized" :
+      init_state_ == InitState::FAILED         ? "failed" : "unknown");
+
     const uint8_t exp_apa = apa_for_size_(battery_size_);
     uint16_t r_apa = 0, r_pm = 0, r_sb = 0, r_ver = 0;
     bool a_ok = read_reg_(REG_APA,           r_apa);
