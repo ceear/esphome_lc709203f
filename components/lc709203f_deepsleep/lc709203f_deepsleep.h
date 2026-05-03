@@ -128,6 +128,9 @@ class LC709203FDeepSleep : public PollingComponent, public i2c::I2CDevice {
   // ── Runtime state ─────────────────────────────────────────────────────────
   InitState init_state_{InitState::UNKNOWN};
   bool ready_{false};
+  // True when the APA register didn't match the expected value on boot,
+  // which reliably indicates the chip lost power (POR substitute).
+  bool chip_was_reset_{false};
 };
 
 }  // namespace lc709203f_deepsleep
