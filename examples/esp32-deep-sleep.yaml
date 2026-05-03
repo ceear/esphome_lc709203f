@@ -75,7 +75,7 @@ wifi:
   power_save_mode: none
 
 external_components:
-  - source: github://ceear/lc709203f_deepsleep@main
+  - source: github://ceear/esphome_lc709203f@main
     components: [lc709203f_deepsleep]
 
 i2c:

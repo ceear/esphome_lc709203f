@@ -85,10 +85,13 @@ bool LC709203FDeepSleep::init_chip_() {
     ESP_LOGE(TAG, "Failed to write APA register");
     return false;
   }
+  ESP_LOGD(TAG, "  APA write OK (reg 0x%02X = 0x%02X)", REG_APA, apa);
 
-  ESP_LOGD(TAG, "Writing battery profile (CHANGE_OF_THE_PARAMETER) 0x%04X...", pack_voltage_);
+  ESP_LOGD(TAG, "Writing battery profile (CHANGE_OF_THE_PARAMETER = 0x%04X)...", pack_voltage_);
   if (!write_reg_(REG_CHANGE_PARAM, pack_voltage_)) {
     ESP_LOGW(TAG, "Failed to write battery profile; continuing anyway");
+  } else {
+    ESP_LOGD(TAG, "  CHANGE_PARAM write OK");
   }
 
   ESP_LOGI(TAG, "Writing Initial RSOC...");
@@ -96,13 +99,17 @@ bool LC709203FDeepSleep::init_chip_() {
     ESP_LOGE(TAG, "Failed to write Initial RSOC");
     return false;
   }
+  ESP_LOGD(TAG, "  INITIAL_RSOC write OK – chip re-estimates RSOC from current OCV (battery should be at rest)");
   // Datasheet recommends a brief settle time after INITIAL_RSOC write
   delay(2);
 
   if (set_temperature_mode_on_boot_) {
     uint16_t temp_mode = (temperature_sensor_ != nullptr) ? TEMP_MODE_THERMISTOR : TEMP_MODE_I2C;
-    ESP_LOGD(TAG, "Writing temperature mode 0x%04X...", temp_mode);
+    ESP_LOGD(TAG, "Writing temperature mode 0x%04X (%s)...", temp_mode,
+             temp_mode == TEMP_MODE_THERMISTOR ? "thermistor" : "I2C");
     write_reg_(REG_STATUS_BIT, temp_mode);
+  } else {
+    ESP_LOGD(TAG, "  STATUS_BIT (temp mode) not written (set_temperature_mode_on_boot=false)");
   }
 
   ESP_LOGI(TAG, "Initialization complete");
@@ -113,12 +120,15 @@ bool LC709203FDeepSleep::init_chip_() {
 // Mirrors the ESPHome standard component but completes all init in setup()
 // rather than spreading it across multiple update() cycles.
 bool LC709203FDeepSleep::setup_normal_() {
-  ESP_LOGD(TAG, "Normal mode: full initialization");
+  ESP_LOGD(TAG, "Normal mode: full initialization sequence");
+  ESP_LOGD(TAG, "  Will write: IC_POWER_MODE=operational, APA=0x%02X (%u mAh), CHANGE_PARAM=0x%04X, INITIAL_RSOC",
+           apa_for_size_(battery_size_), battery_size_, pack_voltage_);
 
   if (!write_reg_(REG_IC_POWER_MODE, POWER_MODE_OPERATIONAL)) {
     ESP_LOGE(TAG, "Failed to set operational mode");
     return false;
   }
+  ESP_LOGD(TAG, "  IC_POWER_MODE=operational write OK");
   return init_chip_();
 }
 
@@ -147,26 +157,38 @@ bool LC709203FDeepSleep::setup_deep_sleep_() {
       ESP_LOGI(TAG, "Setting operational mode...");
       if (!write_reg_(REG_IC_POWER_MODE, POWER_MODE_OPERATIONAL)) {
         ESP_LOGW(TAG, "Failed to set operational mode; measurements may be stale");
+      } else {
+        ESP_LOGD(TAG, "  IC_POWER_MODE=operational write OK");
       }
       delay(5);  // Brief settle after mode switch
+    } else {
+      ESP_LOGD(TAG, "IC_POWER_MODE already operational – no write needed");
     }
+  } else {
+    ESP_LOGD(TAG, "set_operational_mode_on_boot=false – IC_POWER_MODE not written");
   }
 
   // ── Step 3: force_initialize overrides everything ──────────────────────────
   if (force_initialize_) {
     ESP_LOGI(TAG, "force_initialize=true: running full initialization");
+    ESP_LOGD(TAG, "  Reason: unconditional re-init (e.g. battery swap, first commissioning)");
+    ESP_LOGD(TAG, "  Will write: IC_POWER_MODE, APA=0x%02X (%u mAh), CHANGE_PARAM=0x%04X, INITIAL_RSOC",
+             apa_for_size_(battery_size_), battery_size_, pack_voltage_);
     if (!write_reg_(REG_IC_POWER_MODE, POWER_MODE_OPERATIONAL))
       return false;
+    ESP_LOGD(TAG, "  IC_POWER_MODE=operational write OK");
     {  // Always write full init sequence on force_initialize
       if (!init_chip_())
         return false;
     }
     init_state_ = InitState::INITIALIZED;
+    ESP_LOGD(TAG, "Setup complete: init_state=initialized (forced)");
     return true;
   }
 
   // ── Step 4: Try reading existing values ────────────────────────────────────
   if (assume_already_initialized_) {
+    ESP_LOGD(TAG, "assume_already_initialized=true: reading chip state before deciding to init");
     uint16_t raw_v = 0, raw_l = 0;
     bool read_ok = read_reg_(REG_CELL_VOLTAGE, raw_v) && read_reg_(REG_ITE, raw_l);
 
@@ -174,31 +196,47 @@ bool LC709203FDeepSleep::setup_deep_sleep_() {
       float voltage = raw_v / 1000.0f;
       float level   = raw_l / 10.0f;
 
-      ESP_LOGD(TAG, "Read: voltage=%.3f V, RSOC=%.1f %%", voltage, level);
-
       bool v_ok = (voltage >= valid_voltage_min_ && voltage <= valid_voltage_max_);
       bool l_ok = (level   >= valid_rsoc_min_    && level   <= valid_rsoc_max_);
 
+      ESP_LOGD(TAG, "Plausibility check:");
+      ESP_LOGD(TAG, "  Voltage: %.3f V  [%.2f–%.2f V] → %s",
+               voltage, valid_voltage_min_, valid_voltage_max_, v_ok ? "OK" : "OUT OF RANGE");
+      ESP_LOGD(TAG, "  RSOC:    %.1f %%  [%.0f–%.0f %%] → %s",
+               level, valid_rsoc_min_, valid_rsoc_max_, l_ok ? "OK" : "OUT OF RANGE");
+
       if (v_ok && l_ok) {
         ESP_LOGI(TAG, "Existing gauge state considered valid; skipping Initial RSOC");
+        ESP_LOGD(TAG, "  Decision: chip running with valid values → no registers written");
+        ESP_LOGD(TAG, "  Skipped: APA, CHANGE_PARAM, INITIAL_RSOC");
         init_state_ = InitState::VALID_EXISTING;
+        ESP_LOGD(TAG, "Setup complete: init_state=valid_existing");
         return true;
       }
 
       ESP_LOGW(TAG, "Values implausible (V=%.3f, RSOC=%.1f%%); running safe initialization",
                voltage, level);
+      ESP_LOGD(TAG, "  Decision: invalid value(s) → initialization required");
     } else {
       ESP_LOGW(TAG, "Failed to read voltage/RSOC; running safe initialization");
+      ESP_LOGD(TAG, "  Decision: I2C read error → initialization required");
     }
+  } else {
+    ESP_LOGD(TAG, "assume_already_initialized=false: skipping plausibility check, proceeding to init");
   }
 
   // ── Step 5: Initialize because values were missing or implausible ──────────
   if (initialize_if_invalid_) {
+    ESP_LOGD(TAG, "Fallback initialization (initialize_if_invalid=true):");
     if (set_apa_on_boot_) {
       uint8_t apa = apa_for_size_(battery_size_);
-      ESP_LOGD(TAG, "Writing APA 0x%02X...", apa);
+      ESP_LOGD(TAG, "  Writing APA 0x%02X (%u mAh)...", apa, battery_size_);
       write_reg_(REG_APA, apa);
+    } else {
+      ESP_LOGD(TAG, "  APA write skipped (set_apa_on_boot=false) – existing chip value retained");
     }
+
+    ESP_LOGD(TAG, "  Writing CHANGE_PARAM 0x%04X...", pack_voltage_);
     write_reg_(REG_CHANGE_PARAM, pack_voltage_);
 
     if (write_initial_rsoc_on_boot_) {
@@ -207,20 +245,24 @@ bool LC709203FDeepSleep::setup_deep_sleep_() {
         ESP_LOGE(TAG, "Failed to write Initial RSOC");
         return false;
       }
+      ESP_LOGD(TAG, "  INITIAL_RSOC write OK – chip re-estimates RSOC from current OCV");
       delay(2);
     } else {
       // Minimal init without INITIAL_RSOC reset – preserves accumulated gauge data
       // when values were only slightly out of range or read failed transiently.
       // The chip will recalibrate internally once it has more OCV samples.
-      ESP_LOGD(TAG, "Skipping Initial RSOC write (write_initial_rsoc_on_boot=false)");
+      ESP_LOGD(TAG, "  INITIAL_RSOC write skipped (write_initial_rsoc_on_boot=false) – accumulated gauge data preserved");
     }
 
     if (set_temperature_mode_on_boot_) {
       write_reg_(REG_STATUS_BIT, (temperature_sensor_ != nullptr) ? TEMP_MODE_THERMISTOR : TEMP_MODE_I2C);
+    } else {
+      ESP_LOGD(TAG, "  STATUS_BIT (temp mode) not written (set_temperature_mode_on_boot=false)");
     }
 
     init_state_ = InitState::INITIALIZED;
     ESP_LOGI(TAG, "Initialization complete");
+    ESP_LOGD(TAG, "Setup complete: init_state=initialized (fallback due to invalid/unreadable values)");
     return true;
   }
 
@@ -304,6 +346,12 @@ void LC709203FDeepSleep::setup() {
 // component.update is triggered explicitly (e.g. via on_boot automation).
 // The first call after boot reads fresh values and publishes immediately.
 void LC709203FDeepSleep::update() {
+  ESP_LOGD(TAG, "Setup result: %s",
+    init_state_ == InitState::VALID_EXISTING ? "valid_existing – chip was already running, no registers written" :
+    init_state_ == InitState::INITIALIZED    ? "initialized – APA/CHANGE_PARAM/INITIAL_RSOC were written" :
+    init_state_ == InitState::FAILED         ? "failed – component not ready" :
+                                               "unknown – setup may not have completed");
+
   if (!ready_) {
     ESP_LOGW(TAG, "Not ready; attempting recovery initialization");
     if (!write_reg_(REG_IC_POWER_MODE, POWER_MODE_OPERATIONAL) || !init_chip_()) {
